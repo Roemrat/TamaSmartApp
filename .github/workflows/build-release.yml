@@ -2,6 +2,9 @@ name: Build and Release
 
 on:
   push:
+    branches:
+      - main
+      - master
     tags:
       - 'v*'
   workflow_dispatch:
@@ -10,6 +13,11 @@ on:
         description: 'Version tag (e.g., v1.0.0)'
         required: true
         default: 'v1.0.0'
+      create_release:
+        description: 'Create GitHub Release'
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   build:
@@ -52,10 +60,13 @@ jobs:
       run: |
         if ("${{ github.ref }}" -like "refs/tags/*") {
           $version = "${{ github.ref }}" -replace "refs/tags/", ""
-        } else {
+        } elseif ("${{ github.event.inputs.version }}" -ne "") {
           $version = "${{ github.event.inputs.version }}"
+        } else {
+          $version = "v${{ github.run_number }}"
         }
         echo "version=$version" >> $env:GITHUB_OUTPUT
+        echo "VERSION=$version" >> $env:GITHUB_ENV
       shell: powershell
       
     - name: Find publish directory
@@ -69,6 +80,21 @@ jobs:
           Get-ChildItem -Recurse -Filter "TamaSmartApp.exe" -Directory | Where-Object { $_.FullName -like "*publish*" } | Select-Object -First 1 -ExpandProperty FullName
         }
         echo "publish_path=$publishPath" >> $env:GITHUB_OUTPUT
+      shell: powershell
+      
+    - name: Remove unnecessary files
+      run: |
+        $publishPath = "${{ steps.find_publish.outputs.publish_path }}"
+        $configFile = Join-Path $publishPath "TamaSmartApp.exe.config"
+        $pdbFile = Join-Path $publishPath "TamaSmartApp.pdb"
+        if (Test-Path $configFile) {
+          Remove-Item $configFile -Force
+          echo "Removed TamaSmartApp.exe.config"
+        }
+        if (Test-Path $pdbFile) {
+          Remove-Item $pdbFile -Force
+          echo "Removed TamaSmartApp.pdb"
+        }
       shell: powershell
       
     - name: Create Release Directory
@@ -93,18 +119,23 @@ jobs:
         retention-days: 30
         
     - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/')
+      if: |
+        startsWith(github.ref, 'refs/tags/') || 
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'true') ||
+        (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'))
       uses: softprops/action-gh-release@v1
       with:
         files: TamaSmartApp-*.zip
+        tag_name: ${{ steps.get_version.outputs.version }}
+        name: Release ${{ steps.get_version.outputs.version }}
         draft: false
-        prerelease: false
+        prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
         generate_release_notes: true
         body: |
-          ## Tama Smart App Release
+          ## Tama Smart App Release ${{ steps.get_version.outputs.version }}
           
           ### Installation
-          1. Download `TamaSmartApp-*.zip`
+          1. Download `TamaSmartApp-${{ steps.get_version.outputs.version }}-win-x86.zip`
           2. Extract the ZIP file
           3. Run `TamaSmartApp.exe`
           
@@ -119,5 +150,10 @@ jobs:
           - Theme Detection for Tamagotchi SMA Card
           - Reset Tama Memory
           - Full Chip Erase
+          
+          ### Build Information
+          - **Build Number**: ${{ github.run_number }}
+          - **Commit**: ${{ github.sha }}
+          - **Branch**: ${{ github.ref_name }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
