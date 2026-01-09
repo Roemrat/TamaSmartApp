@@ -121,8 +121,12 @@ jobs:
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         $version = "${{ steps.get_version.outputs.version }}"
-        git tag -a $version -m "Release $version" || git tag -f -a $version -m "Release $version"
-        git push origin $version --force || git push origin $version
+        if (git rev-parse --verify "refs/tags/$version" 2>$null) {
+          git tag -d $version
+          git push origin :refs/tags/$version
+        }
+        git tag -a $version -m "Release $version"
+        git push origin $version
       shell: powershell
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
