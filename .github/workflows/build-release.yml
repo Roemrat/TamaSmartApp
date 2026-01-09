@@ -17,9 +17,15 @@ jobs:
   build:
     runs-on: windows-latest
     
+    permissions:
+      contents: write
+      
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
       
     - name: Setup .NET SDK
       uses: actions/setup-dotnet@v4
@@ -109,6 +115,34 @@ jobs:
         path: TamaSmartApp-*.zip
         retention-days: 30
         
+    - name: Create Git Tag
+      if: github.event.inputs.create_release == 'true'
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        $version = "${{ steps.get_version.outputs.version }}"
+        git tag -a $version -m "Release $version" || git tag -f -a $version -m "Release $version"
+        git push origin $version --force || git push origin $version
+      shell: powershell
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Create Git Tag
+      if: github.event.inputs.create_release == 'true'
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        $version = "${{ steps.get_version.outputs.version }}"
+        if (git rev-parse --verify "refs/tags/$version" 2>$null) {
+          git tag -d $version
+          git push origin :refs/tags/$version
+        }
+        git tag -a $version -m "Release $version"
+        git push origin $version
+      shell: powershell
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
     - name: Create Release
       if: github.event.inputs.create_release == 'true'
       uses: softprops/action-gh-release@v1
@@ -118,6 +152,7 @@ jobs:
         name: Release ${{ steps.get_version.outputs.version }}
         draft: false
         prerelease: false
+        make_latest: true
         generate_release_notes: true
         body: |
           ## Tama Smart App Release ${{ steps.get_version.outputs.version }}
