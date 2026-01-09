@@ -1,12 +1,6 @@
 name: Build and Release
 
 on:
-  push:
-    branches:
-      - main
-      - master
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       version:
@@ -58,11 +52,8 @@ jobs:
     - name: Get Version
       id: get_version
       run: |
-        if ("${{ github.ref }}" -like "refs/tags/*") {
-          $version = "${{ github.ref }}" -replace "refs/tags/", ""
-        } elseif ("${{ github.event.inputs.version }}" -ne "") {
-          $version = "${{ github.event.inputs.version }}"
-        } else {
+        $version = "${{ github.event.inputs.version }}"
+        if ([string]::IsNullOrWhiteSpace($version)) {
           $version = "v${{ github.run_number }}"
         }
         echo "version=$version" >> $env:GITHUB_OUTPUT
@@ -119,17 +110,14 @@ jobs:
         retention-days: 30
         
     - name: Create Release
-      if: |
-        startsWith(github.ref, 'refs/tags/') || 
-        (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'true') ||
-        (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'))
+      if: github.event.inputs.create_release == 'true'
       uses: softprops/action-gh-release@v1
       with:
         files: TamaSmartApp-*.zip
         tag_name: ${{ steps.get_version.outputs.version }}
         name: Release ${{ steps.get_version.outputs.version }}
         draft: false
-        prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        prerelease: false
         generate_release_notes: true
         body: |
           ## Tama Smart App Release ${{ steps.get_version.outputs.version }}
