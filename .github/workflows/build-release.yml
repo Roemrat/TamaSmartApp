@@ -24,14 +24,28 @@ jobs:
       with:
         dotnet-version: '8.0.x'
         
+    - name: Find project file
+      id: find_project
+      run: |
+        if (Test-Path "TamaSmartApp.csproj") {
+          echo "project_path=TamaSmartApp.csproj" >> $env:GITHUB_OUTPUT
+        } elseif (Test-Path "TamaSmartApp/TamaSmartApp.csproj") {
+          echo "project_path=TamaSmartApp/TamaSmartApp.csproj" >> $env:GITHUB_OUTPUT
+        } else {
+          echo "Project file not found!"
+          Get-ChildItem -Recurse -Filter "*.csproj" | Select-Object -First 1 FullName
+          exit 1
+        }
+      shell: powershell
+      
     - name: Restore dependencies
-      run: dotnet restore TamaSmartApp/TamaSmartApp.csproj
+      run: dotnet restore ${{ steps.find_project.outputs.project_path }}
       
     - name: Build Release
-      run: dotnet build TamaSmartApp/TamaSmartApp.csproj -c Release
+      run: dotnet build ${{ steps.find_project.outputs.project_path }} -c Release
       
     - name: Publish Release
-      run: dotnet publish TamaSmartApp/TamaSmartApp.csproj -c Release -r win-x86 --self-contained false
+      run: dotnet publish ${{ steps.find_project.outputs.project_path }} -c Release -r win-x86 --self-contained false
       
     - name: Get Version
       id: get_version
@@ -44,10 +58,23 @@ jobs:
         echo "version=$version" >> $env:GITHUB_OUTPUT
       shell: powershell
       
+    - name: Find publish directory
+      id: find_publish
+      run: |
+        $publishPath = if (Test-Path "bin\Release\net48\win-x86\publish") {
+          "bin\Release\net48\win-x86\publish"
+        } elseif (Test-Path "TamaSmartApp\bin\Release\net48\win-x86\publish") {
+          "TamaSmartApp\bin\Release\net48\win-x86\publish"
+        } else {
+          Get-ChildItem -Recurse -Filter "TamaSmartApp.exe" -Directory | Where-Object { $_.FullName -like "*publish*" } | Select-Object -First 1 -ExpandProperty FullName
+        }
+        echo "publish_path=$publishPath" >> $env:GITHUB_OUTPUT
+      shell: powershell
+      
     - name: Create Release Directory
       run: |
         New-Item -ItemType Directory -Force -Path "release" | Out-Null
-        Copy-Item -Path "TamaSmartApp\bin\Release\net48\win-x86\publish\*" -Destination "release\" -Recurse -Force
+        Copy-Item -Path "${{ steps.find_publish.outputs.publish_path }}\*" -Destination "release\" -Recurse -Force
       shell: powershell
       
     - name: Create ZIP Archive
