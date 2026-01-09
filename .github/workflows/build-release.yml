@@ -25,16 +25,13 @@ jobs:
         dotnet-version: '8.0.x'
         
     - name: Restore dependencies
-      run: dotnet restore
-      working-directory: TamaSmartApp
+      run: dotnet restore TamaSmartApp/TamaSmartApp.csproj
       
     - name: Build Release
-      run: dotnet build -c Release
-      working-directory: TamaSmartApp
+      run: dotnet build TamaSmartApp/TamaSmartApp.csproj -c Release
       
     - name: Publish Release
-      run: dotnet publish -c Release -r win-x86 --self-contained false
-      working-directory: TamaSmartApp
+      run: dotnet publish TamaSmartApp/TamaSmartApp.csproj -c Release -r win-x86 --self-contained false
       
     - name: Get Version
       id: get_version
