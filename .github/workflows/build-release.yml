@@ -1,0 +1,99 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+        
+    - name: Restore dependencies
+      run: dotnet restore
+      working-directory: TamaSmartApp
+      
+    - name: Build Release
+      run: dotnet build -c Release
+      working-directory: TamaSmartApp
+      
+    - name: Publish Release
+      run: dotnet publish -c Release -r win-x86 --self-contained false
+      working-directory: TamaSmartApp
+      
+    - name: Get Version
+      id: get_version
+      run: |
+        if ("${{ github.ref }}" -like "refs/tags/*") {
+          $version = "${{ github.ref }}" -replace "refs/tags/", ""
+        } else {
+          $version = "${{ github.event.inputs.version }}"
+        }
+        echo "version=$version" >> $env:GITHUB_OUTPUT
+      shell: powershell
+      
+    - name: Create Release Directory
+      run: |
+        New-Item -ItemType Directory -Force -Path "release" | Out-Null
+        Copy-Item -Path "TamaSmartApp\bin\Release\net48\win-x86\publish\*" -Destination "release\" -Recurse -Force
+      shell: powershell
+      
+    - name: Create ZIP Archive
+      run: |
+        $version = "${{ steps.get_version.outputs.version }}"
+        $zipName = "TamaSmartApp-$version-win-x86.zip"
+        Compress-Archive -Path "release\*" -DestinationPath $zipName -Force
+        echo "ZIP_FILE=$zipName" >> $env:GITHUB_ENV
+      shell: powershell
+      
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: TamaSmartApp-win-x86
+        path: TamaSmartApp-*.zip
+        retention-days: 30
+        
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: TamaSmartApp-*.zip
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+        body: |
+          ## Tama Smart App Release
+          
+          ### Installation
+          1. Download `TamaSmartApp-*.zip`
+          2. Extract the ZIP file
+          3. Run `TamaSmartApp.exe`
+          
+          ### Requirements
+          - Windows (32-bit)
+          - .NET Framework 4.8
+          - CH347 USB-to-SPI Bridge
+          
+          ### Features
+          - Read/Write SPI Flash Memory
+          - Chip ID Detection
+          - Theme Detection for Tamagotchi SMA Card
+          - Reset Tama Memory
+          - Full Chip Erase
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
