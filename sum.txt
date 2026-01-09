@@ -1,0 +1,45 @@
+สรุปงานที่ทำ
+ภาพรวม
+พัฒนาแอปพลิเคชัน C# WinForms สำหรับอ่าน/เขียน SPI Flash ผ่าน CH347 โดยมีฟีเจอร์หลัก: อ่าน Flash ID, อ่าน/เขียน Flash, ลบ Sector, และแสดงข้อมูล Chip
+ฟีเจอร์ที่เพิ่ม/ปรับปรุง
+1. การแสดงข้อมูล Chip
+อ่าน Flash ID และแสดงข้อมูล Chip จาก chiplist.xml
+แสดง IC Name, Size, Page Size, SPI Commands
+รองรับกรณีมี Chip หลายตัวที่ Flash ID ซ้ำกัน (แสดง dialog ให้เลือก)
+2. การอ่าน Flash
+อ่าน Flash ทั้งหมดตามขนาด Chip อัตโนมัติ (ไม่ต้องระบุ address/length)
+ใช้ CH347SPI_Read และ chunk size 4096 bytes
+มี Progress Bar แสดงความคืบหน้า
+แยก log ระหว่างการอ่านและการบันทึกไฟล์
+3. การเขียน Flash
+ขั้นตอน: Unprotect → Erase → Write → Verify
+Skip หน้า 0xFF ทั้งหมด (ไม่ต้องเขียน)
+ปรับปรุง WaitReady() ให้เร็วขึ้น (fast polling)
+มี Progress Bar แสดงความคืบหน้าแต่ละขั้นตอน
+4. การจัดการไฟล์
+chiplist.xml และ CH347DLL.DLL ถูก embed ใน exe
+ไม่ต้องมีไฟล์แยก (single executable)
+CH347DLL.DLL ถูก extract ไปที่ temp folder เมื่อรัน
+5. UI/UX
+Progress Bar และ Progress Label สำหรับอ่าน/เขียน
+ปรับ font log เป็น Segoe UI เพื่อความสม่ำเสมอของ emoji และตัวอักษร
+Log แยกชัดเจนระหว่างการอ่านและการบันทึกไฟล์
+ปุ่ม Refresh สำหรับอ่าน Flash ID อีกครั้ง
+6. Performance
+SPI Speed: 30MHz (speed = 1)
+Chunk Size: 4096 bytes สำหรับอ่าน, 256 bytes สำหรับเขียน
+Fast polling ใน WaitReady() (10 ครั้งแรกไม่ delay)
+ไฟล์ที่แก้ไข
+CH347Wrapper.cs - เพิ่มฟังก์ชัน ReadFlash, WriteFlash, VerifyFlash, EraseChip, Unprotect
+MainForm.cs - เพิ่ม UI logic และขั้นตอนการเขียน
+MainForm.Designer.cs - เพิ่ม ProgressBar และ ProgressLabel
+CH347DLL.cs - เพิ่มการ extract DLL จาก embedded resource
+TamaSmartApp.csproj - ตั้งค่า embed resources และจัดการ DLL
+ChipInfo.cs - เพิ่มฟังก์ชันค้นหา Chip (รวมกรณีซ้ำ)
+ผลลัพธ์
+อ่าน Flash: เร็วขึ้น (ใช้ CH347SPI_Read และ chunk size ใหญ่)
+เขียน Flash: เร็วขึ้น (skip 0xFF, fast polling)
+Single executable: ไม่ต้องมีไฟล์แยก
+UI: มี Progress Bar และ log ที่ชัดเจน
+สถานะ
+พร้อมใช้งาน: อ่าน/เขียน Flash, แสดงข้อมูล Chip, Progress Bar, และขั้นตอนการเขียนครบถ้วน

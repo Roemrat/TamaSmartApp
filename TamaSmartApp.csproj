@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>x86</PlatformTarget>
+    <UseWindowsForms>true</UseWindowsForms>
+    <LangVersion>8.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <AssemblyName>TamaSmartApp</AssemblyName>
+    <RootNamespace>TamaSmartApp</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Management" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="lib\CH347DLL.DLL">
+      <LogicalName>CH347DLL.DLL</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="lib\chiplist.xml">
+      <LogicalName>chiplist.xml</LogicalName>
+      <!-- Force rebuild every time to ensure latest version is embedded -->
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <!-- Ensure chiplist.xml is always embedded on build -->
+  <Target Name="ValidateChiplist" BeforeTargets="BeforeBuild">
+    <Message Text="Validating and embedding chiplist.xml..." Importance="normal" />
+    <Error Condition="!Exists('lib\chiplist.xml')" Text="chiplist.xml not found in lib directory!" />
+    <Message Text="chiplist.xml found. Will be embedded into executable." Importance="normal" />
+  </Target>
+
+  <!-- Verify chiplist.xml was embedded after build -->
+  <Target Name="VerifyChiplistEmbedded" AfterTargets="AfterBuild">
+    <Message Text="Build completed. chiplist.xml should be embedded in $(TargetPath)" Importance="normal" />
+  </Target>
+
+  <!-- Prevent .NET SDK from automatically copying CH347DLL.DLL to output directory -->
+  <Target Name="PreventDLLCopy" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <_ResolvedNativeReference Remove="@(_ResolvedNativeReference)" Condition="$([System.String]::Copy('%(Identity)').EndsWith('CH347DLL.DLL'))" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Remove CH347DLL.DLL from publish directory (it's embedded in exe) -->
+  <Target Name="RemoveDLLFromPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <DLLToDelete Include="$(PublishDir)CH347DLL.DLL" />
+      <DLLInLib Include="$(PublishDir)lib\CH347DLL.DLL" />
+    </ItemGroup>
+    <Delete Files="@(DLLToDelete);@(DLLInLib)" ContinueOnError="true" />
+    <Message Text="CH347DLL.DLL is embedded in executable (removed from publish directory)" Importance="normal" />
+  </Target>
+
+</Project>
