@@ -267,7 +267,120 @@ namespace TamaSmartApp
             try
             {
                 AddLog("กำลังอ่าน Chip ID...", "info");
-                if (ch347.ReadFlashID(out byte[]? id) && id != null)
+                
+                byte[]? id = null;
+                byte originalSpeed = ch347.CurrentSpeed;
+                byte successfulSpeed = originalSpeed;
+                bool foundInDatabase = false;
+                bool readSuccess = false;
+                
+                // Helper function to check if ID indicates no chip connected
+                bool IsNoChipConnected(byte[]? chipId)
+                {
+                    if (chipId == null || chipId.Length < 3) return true;
+                    // 00 00 00 or FF FF FF usually means no chip connected
+                    return (chipId[0] == 0x00 && chipId[1] == 0x00 && chipId[2] == 0x00) ||
+                           (chipId[0] == 0xFF && chipId[1] == 0xFF && chipId[2] == 0xFF);
+                }
+                
+                // Try reading at current speed first
+                readSuccess = ch347.ReadFlashID(out id) && id != null;
+                if (readSuccess && id != null)
+                {
+                    // If got 00 00 00 or FF FF FF, likely no chip connected - skip retry
+                    if (IsNoChipConnected(id))
+                    {
+                        AddLog("⚠️ ไม่เจอ Chip", "warning");
+                        // Don't try slower speeds if we get this
+                    }
+                    else
+                    {
+                        // Check if found in database
+                        var matchingChips = ChipDatabase.FindAllByFlashId(id);
+                        if (matchingChips.Count > 0)
+                        {
+                            foundInDatabase = true;
+                        }
+                    }
+                }
+                
+                // If not found in database or read failed, try slower speeds
+                // BUT skip if we got 00 00 00 or FF FF FF (no chip connected)
+                if (!foundInDatabase && !IsNoChipConnected(id))
+                {
+                    if (readSuccess)
+                    {
+                        AddLog("⚠️ ไม่พบข้อมูล Chip ในฐานข้อมูล - กำลังลองลดความเร็ว...", "warning");
+                    }
+                    else
+                    {
+                        AddLog("⚠️ ไม่สามารถอ่าน Chip ID ได้ - กำลังลองลดความเร็ว...", "warning");
+                    }
+                    
+                    // Try slower speeds: 2 (15MHz), 3 (7.5MHz), 4 (3.75MHz), 5 (1.875MHz)
+                    for (byte speed = 2; speed <= 5 && !foundInDatabase; speed++)
+                    {
+                        AddLog($"   ลองความเร็ว {CH347Wrapper.GetSpeedString(speed)}...", "info");
+                        
+                        if (ch347.InitSPI(speed))
+                        {
+                            System.Threading.Thread.Sleep(10); // Small delay for SPI to stabilize
+                            
+                            if (ch347.ReadFlashID(out byte[]? retryId) && retryId != null)
+                            {
+                                // Check if the new ID matches (should be same or better read)
+                                bool idsMatch = true;
+                                if (id != null && id.Length == retryId.Length)
+                                {
+                                    for (int i = 0; i < id.Length; i++)
+                                    {
+                                        if (id[i] != retryId[i])
+                                        {
+                                            idsMatch = false;
+                                            break;
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    idsMatch = false;
+                                }
+                                
+                                // If we got a different (and possibly better) ID, or if previous read failed, use it
+                                if (id == null || !idsMatch || (retryId[0] != 0xFF && retryId[1] != 0xFF))
+                                {
+                                    id = retryId;
+                                }
+                                
+                                // Check database again with this ID
+                                var retryMatchingChips = ChipDatabase.FindAllByFlashId(id);
+                                if (retryMatchingChips.Count > 0)
+                                {
+                                    foundInDatabase = true;
+                                    successfulSpeed = speed;
+                                    readSuccess = true;
+                                    AddLog($"   ✅ อ่านสำเร็จที่ความเร็ว {CH347Wrapper.GetSpeedString(speed)}", "success");
+                                    break;
+                                }
+                                else if (!readSuccess)
+                                {
+                                    // At least we can read the ID now, even if not in database
+                                    readSuccess = true;
+                                    successfulSpeed = speed;
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Restore original speed if we changed it
+                    if (successfulSpeed != originalSpeed)
+                    {
+                        ch347.InitSPI(originalSpeed);
+                    }
+                }
+                
+                // Display results
+                if (id != null)
                 {
                     StringBuilder sb = new StringBuilder();
                     sb.Append("Chip ID: ");
@@ -275,6 +388,13 @@ namespace TamaSmartApp
                     {
                         sb.Append($"{b:X2} ");
                     }
+                    
+                    // Add frequency if we used a different speed
+                    if (successfulSpeed != originalSpeed)
+                    {
+                        sb.Append($"({CH347Wrapper.GetSpeedString(successfulSpeed)})");
+                    }
+                    
                     AddLog($"✅ {sb.ToString()}", "success");
                     flashIdLabel.Text = sb.ToString();
 
@@ -309,7 +429,13 @@ namespace TamaSmartApp
                         {
                             icNameLabel.Text = currentChipInfo.Name;
                             chipSizeLabel.Text = currentChipInfo.Size.ToString();
-                            AddLog($"✅ พบ Chip: {currentChipInfo.Name} ({currentChipInfo.Manufacturer})", "success");
+                            
+                            string chipInfoMsg = $"✅ พบ Chip: {currentChipInfo.Name} ({currentChipInfo.Manufacturer})";
+                            if (successfulSpeed != originalSpeed)
+                            {
+                                chipInfoMsg += $" @ {CH347Wrapper.GetSpeedString(successfulSpeed)}";
+                            }
+                            AddLog(chipInfoMsg, "success");
                             AddLog($"   Size: {currentChipInfo.SizeFormatted} ({currentChipInfo.Size} bytes)", "info");
                             
                             // Read theme from address 0x32
@@ -322,7 +448,12 @@ namespace TamaSmartApp
                         icNameLabel.Text = "Unknown";
                         chipSizeLabel.Text = "-";
                         chipThemeLabel.Text = "-";
-                        AddLog("⚠️ ไม่พบข้อมูล Chip ในฐานข้อมูล", "warning");
+                        string notFoundMsg = "⚠️ ไม่พบข้อมูล Chip ในฐานข้อมูล";
+                        if (successfulSpeed != originalSpeed)
+                        {
+                            notFoundMsg += $" (อ่านที่ความเร็ว {CH347Wrapper.GetSpeedString(successfulSpeed)})";
+                        }
+                        AddLog(notFoundMsg, "warning");
                     }
                 }
                 else

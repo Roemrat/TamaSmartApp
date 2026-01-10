@@ -9,9 +9,11 @@ namespace TamaSmartApp
         private uint _deviceIndex;
         private bool _isOpen = false;
         private bool _spiInitialized = false;
+        private byte _currentSpeed = 1; // Track current SPI speed
 
         public bool IsOpen => _isOpen;
         public uint DeviceIndex => _deviceIndex;
+        public byte CurrentSpeed => _currentSpeed;
 
         public bool OpenDevice(uint deviceIndex)
         {
@@ -64,8 +66,25 @@ namespace TamaSmartApp
             if (result)
             {
                 _spiInitialized = true;
+                _currentSpeed = speed;
             }
             return result;
+        }
+
+        public static string GetSpeedString(byte speed)
+        {
+            switch (speed)
+            {
+                case 0: return "60MHz";
+                case 1: return "30MHz";
+                case 2: return "15MHz";
+                case 3: return "7.5MHz";
+                case 4: return "3.75MHz";
+                case 5: return "1.875MHz";
+                case 6: return "937.5KHz";
+                case 7: return "468.75KHz";
+                default: return "Unknown";
+            }
         }
 
         public bool SPIWriteRead(byte[] writeData, out byte[]? readData)
